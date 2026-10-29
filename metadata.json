@@ -1,0 +1,8 @@
+{
+  "name": "Netfilmes",
+  "description": "Catálogo completo de filmes e séries estilo Netflix com trailers, múltiplos perfis, player de vídeo e busca. Versão para tv android",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

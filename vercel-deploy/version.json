@@ -1,0 +1,7 @@
+{
+  "versionCode": 6,
+  "versionName": "1.6",
+  "apkUrl": "https://github.com/jefao701/App-Mobile-e-TV/releases/download/1.1/netfilmes-tv-novo.apk",
+  "changelog": "• Versão Mobile atualizada com Configurações, Fontes e Sincronização restauradas\n• Correção definitiva no verificador de atualizações (evita repetições)\n• Gerenciamento completo de fontes e addons",
+  "forceUpdate": false
+}

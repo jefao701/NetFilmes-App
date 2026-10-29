@@ -1,0 +1,23 @@
+{
+  "name": "Netfilmes PC & TV",
+  "short_name": "Netfilmes",
+  "description": "Catálogo completo de filmes e séries estilo Netflix com trailers e player de vídeo para PC e Smart TV.",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#E50914",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

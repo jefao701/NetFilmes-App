@@ -1,0 +1,2244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netfilmes - Versão PC & TV</title>
+  <link rel="icon" href="https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#E50914">
+  <!-- HLS.js for streaming playback -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- Firebase SDKs for Cloud Sync with Android TV and Phone -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --netflix-red: #E50914;
+      --netflix-dark-red: #B81D24;
+      --netflix-black: #141414;
+      --netflix-card: #1F1F1F;
+      --netflix-gray: #808080;
+      --netflix-light-gray: #CCCCCC;
+      --netflix-white: #FFFFFF;
+      --rail-width: 80px;
+      --rail-expanded-width: 210px;
+    }
+    body {
+      background-color: var(--netflix-black);
+      color: var(--netflix-white);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { height: 6px; width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333333; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #555555; }
+
+    /* Layout structure */
+    #app-container {
+      display: flex;
+      min-height: 100vh;
+      background: var(--netflix-black);
+      position: relative;
+    }
+
+    /* Leanback TV Left Navigation Rail */
+    #tv-rail {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: var(--rail-width);
+      background: rgba(18, 18, 18, 0.96);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 0;
+      transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      overflow-x: hidden;
+    }
+    #tv-rail:hover, #tv-rail.focused {
+      width: var(--rail-expanded-width);
+      box-shadow: 12px 0 32px rgba(0, 0, 0, 0.8);
+    }
+    .rail-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      margin-bottom: 32px;
+      width: 100%;
+      cursor: pointer;
+    }
+    .brand-n {
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--netflix-red);
+      line-height: 1;
+      min-width: 36px;
+      text-align: center;
+    }
+    .brand-text {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: var(--netflix-white);
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #tv-rail:hover .brand-text, #tv-rail.focused .brand-text {
+      opacity: 1;
+    }
+
+    .rail-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      padding: 0 10px;
+    }
+    .rail-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: var(--netflix-gray);
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      outline: none;
+    }
+    .rail-item:hover, .rail-item:focus, .rail-item.active {
+      color: var(--netflix-white);
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .rail-item.active {
+      border-left: 3px solid var(--netflix-red);
+    }
+    .rail-item:focus {
+      outline: 2px solid var(--netflix-red);
+      background: rgba(229, 9, 20, 0.2);
+    }
+    .rail-icon {
+      font-size: 20px;
+      min-width: 24px;
+      text-align: center;
+    }
+    .rail-label {
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #tv-rail:hover .rail-label, #tv-rail.focused .rail-label {
+      opacity: 1;
+    }
+
+    .rail-footer {
+      margin-top: auto;
+      width: 100%;
+      padding: 0 10px;
+    }
+
+    /* Main Content Area */
+    #main-content {
+      margin-left: var(--rail-width);
+      flex: 1;
+      min-width: 0;
+      padding-bottom: 60px;
+      position: relative;
+    }
+
+    /* Leanback Hero Banner */
+    #hero-banner {
+      position: relative;
+      height: 520px;
+      width: 100%;
+      background-size: cover;
+      background-position: center 20%;
+      display: flex;
+      align-items: flex-end;
+      padding: 0 48px 56px 48px;
+      transition: background-image 0.6s ease-in-out;
+    }
+    .hero-gradient-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(to right, rgba(20,20,20,0.95) 0%, rgba(20,20,20,0.7) 35%, rgba(20,20,20,0.2) 65%, transparent 100%),
+                  linear-gradient(to top, var(--netflix-black) 0%, rgba(20,20,20,0.8) 25%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: relative;
+      z-index: 10;
+      max-width: 680px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .hero-badge .n-badge {
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--netflix-red);
+    }
+    .hero-badge .type-badge {
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      color: #EEE;
+    }
+    .hero-title {
+      font-size: 42px;
+      font-weight: 900;
+      line-height: 1.1;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    }
+    .hero-overview {
+      font-size: 15px;
+      line-height: 1.5;
+      color: #DDD;
+      margin-bottom: 24px;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .btn-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      outline: none;
+    }
+    .btn-hero-play {
+      background: var(--netflix-white);
+      color: #000;
+    }
+    .btn-hero-play:hover, .btn-hero-play:focus {
+      background: rgba(255, 255, 255, 0.75);
+      transform: scale(1.05);
+      outline: 2px solid var(--netflix-white);
+    }
+    .btn-hero-info {
+      background: rgba(109, 109, 110, 0.7);
+      color: var(--netflix-white);
+    }
+    .btn-hero-info:hover, .btn-hero-info:focus {
+      background: rgba(109, 109, 110, 0.4);
+      transform: scale(1.05);
+      outline: 2px solid var(--netflix-white);
+    }
+
+    /* Carousel Rows */
+    .catalog-section {
+      padding: 0 48px;
+      margin-top: -20px;
+      position: relative;
+      z-index: 20;
+    }
+    .media-row {
+      margin-bottom: 36px;
+    }
+    .row-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .row-title {
+      font-size: 22px;
+      font-weight: bold;
+      color: #E5E5E5;
+    }
+    .row-carousel {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      padding: 12px 4px;
+      scroll-behavior: smooth;
+    }
+    .media-card {
+      flex: 0 0 230px;
+      height: 130px;
+      background: var(--netflix-card);
+      border-radius: 6px;
+      position: relative;
+      cursor: pointer;
+      overflow: hidden;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s, outline 0.15s;
+      outline: none;
+    }
+    .media-card:hover, .media-card:focus {
+      transform: scale(1.12);
+      z-index: 30;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.9), 0 0 16px rgba(229, 9, 20, 0.4);
+      outline: 2.5px solid var(--netflix-white);
+    }
+    .media-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .media-card-badge {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--netflix-red);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    }
+    .media-card-info {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 24px 8px 8px 8px;
+      background: linear-gradient(to top, rgba(0,0,0,0.95), transparent);
+    }
+    .media-card-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: #FFF;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .media-card-sub {
+      font-size: 11px;
+      color: #AAA;
+      margin-top: 2px;
+    }
+
+    /* Top 10 Giant Numbers */
+    .top10-card-wrap {
+      flex: 0 0 240px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      position: relative;
+      cursor: pointer;
+      outline: none;
+    }
+    .top10-rank {
+      font-size: 120px;
+      font-weight: 900;
+      line-height: 1;
+      color: #000;
+      -webkit-text-stroke: 4px #595959;
+      width: 75px;
+      text-align: right;
+      margin-right: -10px;
+      z-index: 1;
+    }
+    .top10-card {
+      flex: 1;
+      height: 130px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--netflix-card);
+      position: relative;
+      z-index: 2;
+      transition: transform 0.25s, outline 0.15s;
+    }
+    .top10-card-wrap:hover .top10-card, .top10-card-wrap:focus .top10-card {
+      transform: scale(1.1);
+      outline: 2.5px solid var(--netflix-white);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.9);
+    }
+    .top10-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Detail Modal */
+    #detail-modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      backdrop-filter: blur(8px);
+    }
+    .modal-box {
+      background: #181818;
+      width: 100%;
+      max-width: 850px;
+      max-height: 90vh;
+      border-radius: 12px;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+      border: 1px solid #333;
+    }
+    .modal-hero {
+      position: relative;
+      height: 380px;
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: flex-end;
+      padding: 32px;
+    }
+    .modal-hero-gradient {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(to top, #181818 0%, rgba(24,24,24,0.6) 50%, transparent 100%);
+    }
+    .modal-close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid #444;
+      color: #FFF;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 20px;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    .modal-close-btn:hover, .modal-close-btn:focus {
+      background: var(--netflix-red);
+      outline: 2px solid white;
+    }
+    .modal-info-panel {
+      position: relative;
+      z-index: 10;
+    }
+    .modal-body {
+      padding: 24px 32px 36px 32px;
+    }
+    .meta-tags {
+      display: flex;
+      gap: 12px;
+      font-size: 14px;
+      color: #46D369;
+      font-weight: bold;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .meta-tag-pill {
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #DDD;
+      font-size: 12px;
+    }
+    .modal-overview {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #CCC;
+      margin-bottom: 24px;
+    }
+
+    /* Episodes Selector for TV Shows */
+    .episodes-section {
+      margin-top: 24px;
+      border-top: 1px solid #2B2B2B;
+      padding-top: 20px;
+    }
+    .season-select {
+      background: #242424;
+      color: white;
+      border: 1px solid #444;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: bold;
+      margin-bottom: 16px;
+      cursor: pointer;
+      outline: none;
+    }
+    .season-select:focus {
+      outline: 2px solid var(--netflix-red);
+    }
+    .episode-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .episode-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 14px;
+      background: #222;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      outline: none;
+    }
+    .episode-row:hover, .episode-row:focus {
+      background: #2D2D2D;
+      border-color: var(--netflix-red);
+    }
+    .ep-num {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--netflix-gray);
+      min-width: 24px;
+    }
+    .ep-thumb {
+      width: 100px;
+      height: 60px;
+      background: #333;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    .ep-details {
+      flex: 1;
+    }
+    .ep-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #FFF;
+    }
+    .ep-desc {
+      font-size: 12px;
+      color: #AAA;
+      margin-top: 2px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Fullscreen Video Player */
+    #player-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #000;
+      z-index: 300;
+      display: none;
+    }
+    #main-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .player-controls {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 32px 48px;
+      opacity: 1;
+      transition: opacity 0.3s;
+      pointer-events: all;
+    }
+    .player-controls.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .player-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .player-title {
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .player-source-badge {
+      font-size: 13px;
+      color: #46D369;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .player-center-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+    }
+    .player-icon-btn {
+      background: rgba(0,0,0,0.6);
+      border: 2px solid transparent;
+      color: #FFF;
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      outline: none;
+    }
+    .player-icon-btn:hover, .player-icon-btn:focus {
+      background: var(--netflix-red);
+      transform: scale(1.15);
+      border-color: #FFF;
+    }
+    .player-play-btn {
+      width: 80px;
+      height: 80px;
+      font-size: 36px;
+      background: var(--netflix-white);
+      color: #000;
+    }
+    .player-play-btn:hover, .player-play-btn:focus {
+      background: var(--netflix-red);
+      color: #FFF;
+    }
+
+    /* Skip Intro Button */
+    .btn-skip-intro {
+      position: absolute;
+      right: 48px;
+      bottom: 120px;
+      background: rgba(0,0,0,0.85);
+      color: #FFF;
+      border: 2px solid #FFF;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 40;
+      display: none;
+      transition: all 0.2s;
+      outline: none;
+    }
+    .btn-skip-intro:hover, .btn-skip-intro:focus {
+      background: var(--netflix-red);
+      transform: scale(1.05);
+      box-shadow: 0 0 16px var(--netflix-red);
+    }
+
+    /* Bottom Scrubber & Timeline */
+    .player-bottom-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .progress-slider-container {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 4px;
+      cursor: pointer;
+      position: relative;
+    }
+    .progress-slider-fill {
+      height: 100%;
+      background: var(--netflix-red);
+      border-radius: 4px;
+      width: 0%;
+      position: relative;
+    }
+    .progress-slider-thumb {
+      width: 16px;
+      height: 16px;
+      background: var(--netflix-red);
+      border: 2px solid #FFF;
+      border-radius: 50%;
+      position: absolute;
+      right: -8px;
+      top: -4px;
+    }
+    .player-time-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #AAA;
+      font-weight: 500;
+    }
+
+    /* Search overlay */
+    #search-overlay {
+      position: fixed;
+      top: 0; left: var(--rail-width); right: 0; bottom: 0;
+      background: var(--netflix-black);
+      z-index: 90;
+      display: none;
+      padding: 48px;
+      overflow-y: auto;
+    }
+    .search-input-wrap {
+      display: flex;
+      align-items: center;
+      background: #242424;
+      border: 2px solid #444;
+      border-radius: 8px;
+      padding: 12px 20px;
+      margin-bottom: 32px;
+      max-width: 650px;
+    }
+    .search-input-wrap:focus-within {
+      border-color: var(--netflix-red);
+    }
+    .search-input {
+      background: transparent;
+      border: none;
+      color: #FFF;
+      font-size: 20px;
+      flex: 1;
+      outline: none;
+    }
+    .search-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    /* Toast notice */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #222;
+      border: 1px solid var(--netflix-red);
+      color: #FFF;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 500;
+      display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+    }
+
+    /* Continue watching progress bar on media cards */
+    .continue-card-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.25);
+      z-index: 5;
+    }
+    .continue-card-bar {
+      height: 100%;
+      background: var(--netflix-red);
+      transition: width 0.3s;
+    }
+
+    /* Cloud Sync Modal */
+    #sync-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .sync-box {
+      background: #181818;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 460px;
+      padding: 32px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.8);
+      position: relative;
+    }
+    .sync-box h2 {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sync-desc {
+      font-size: 13px;
+      color: #AAA;
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+    .sync-input {
+      width: 100%;
+      padding: 13px 16px;
+      background: #282828;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #FFF;
+      font-size: 14px;
+      margin-bottom: 12px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .sync-input:focus {
+      border-color: var(--netflix-red);
+      background: #333;
+    }
+    .btn-sync-action {
+      width: 100%;
+      padding: 14px;
+      border-radius: 6px;
+      background: var(--netflix-red);
+      color: #FFF;
+      font-size: 15px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .btn-sync-action:hover {
+      background: var(--netflix-dark-red);
+    }
+    .btn-sync-secondary {
+      width: 100%;
+      padding: 12px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #DDD;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-sync-secondary:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .sync-alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      display: none;
+      line-height: 1.4;
+    }
+    .sync-alert.error {
+      background: rgba(229, 9, 20, 0.2);
+      border: 1px solid var(--netflix-red);
+      color: #FF8888;
+    }
+    .sync-alert.success {
+      background: rgba(70, 211, 105, 0.2);
+      border: 1px solid #46D369;
+      color: #72F593;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- Left TV & PC Navigation Rail -->
+  <nav id="tv-rail" tabindex="0">
+    <div class="rail-brand" onclick="switchView('home')">
+      <div class="brand-n">N</div>
+      <div class="brand-text">NETFILMES</div>
+    </div>
+
+    <div class="rail-menu">
+      <a class="rail-item active" data-view="home" onclick="switchView('home')" tabindex="0">
+        <span class="rail-icon">🏠</span>
+        <span class="rail-label">Início</span>
+      </a>
+      <a class="rail-item" data-view="movies" onclick="switchView('movies')" tabindex="0">
+        <span class="rail-icon">🎬</span>
+        <span class="rail-label">Filmes</span>
+      </a>
+      <a class="rail-item" data-view="series" onclick="switchView('series')" tabindex="0">
+        <span class="rail-icon">📺</span>
+        <span class="rail-label">Séries</span>
+      </a>
+      <a class="rail-item" data-view="mylist" onclick="switchView('mylist')" tabindex="0">
+        <span class="rail-icon">➕</span>
+        <span class="rail-label">Minha Lista</span>
+      </a>
+      <a class="rail-item" data-view="search" onclick="openSearch()" tabindex="0">
+        <span class="rail-icon">🔍</span>
+        <span class="rail-label">Buscar</span>
+      </a>
+      <a class="rail-item" data-view="sync" onclick="openSyncModal()" tabindex="0" id="rail-sync-btn" title="Sincronizar com App Netfilmes (TV & Celular)">
+        <span class="rail-icon" id="rail-sync-icon">🔄</span>
+        <span class="rail-label" id="rail-sync-label">Sincronização</span>
+      </a>
+    </div>
+
+    <div class="rail-footer">
+      <a class="rail-item" href="/Netfilmes-PC.bat" download tabindex="0" title="Atalho para Computador (Windows)">
+        <span class="rail-icon">💻</span>
+        <span class="rail-label">App PC (.bat)</span>
+      </a>
+      <a class="rail-item" href="/netfilmes-tv-novo.apk" download tabindex="0" title="Baixar APK para TV e Celular">
+        <span class="rail-icon">📱</span>
+        <span class="rail-label">Baixar APK</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main View Content -->
+  <main id="main-content">
+    <!-- Cinematic Leanback Hero Banner -->
+    <header id="hero-banner">
+      <div class="hero-gradient-overlay"></div>
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="n-badge">N</span>
+          <span class="type-badge" id="hero-type">S É R I E</span>
+        </div>
+        <h1 class="hero-title" id="hero-title">Carregando...</h1>
+        <p class="hero-overview" id="hero-overview">Carregando catálogo de filmes e séries da Netfilmes...</p>
+        <div class="hero-actions">
+          <button class="btn-hero btn-hero-play" id="hero-btn-play" tabindex="0">
+            ▶ Assistir
+          </button>
+          <button class="btn-hero btn-hero-info" id="hero-btn-info" tabindex="0">
+            ℹ Mais Informações
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Catalog Carousel Rows -->
+    <section class="catalog-section">
+      <!-- Continuar Assistindo (Sincronizado em tempo real entre TV, Celular e Web) -->
+      <div class="media-row" id="row-continue-watching" style="display: none;">
+        <div class="row-header" style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h2 class="row-title">Continuar Assistindo</h2>
+            <span id="sync-live-badge" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 8px; border-radius: 12px; background: rgba(70, 211, 105, 0.15); color: #46D369; border: 1px solid rgba(70, 211, 105, 0.4); font-weight: bold;">
+              ☁ Sincronizado com App
+            </span>
+          </div>
+          <button onclick="syncNowFromWeb()" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #ccc; border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;">
+            🔄 Sincronizar
+          </button>
+        </div>
+        <div class="row-carousel" id="carousel-continue-watching"></div>
+      </div>
+
+      <!-- Populares na Netfilmes -->
+      <div class="media-row">
+        <div class="row-header">
+          <h2 class="row-title">Populares na Netfilmes</h2>
+        </div>
+        <div class="row-carousel" id="carousel-popular"></div>
+      </div>
+
+      <!-- Top 10 Filmes de Hoje -->
+      <div class="media-row">
+        <div class="row-header">
+          <h2 class="row-title">Top 10 Filmes de Hoje</h2>
+        </div>
+        <div class="row-carousel" id="carousel-top10-movies"></div>
+      </div>
+
+      <!-- Top 10 Séries de Hoje -->
+      <div class="media-row">
+        <div class="row-header">
+          <h2 class="row-title">Top 10 Séries de Hoje</h2>
+        </div>
+        <div class="row-carousel" id="carousel-top10-series"></div>
+      </div>
+
+      <!-- Séries em Alta -->
+      <div class="media-row">
+        <div class="row-header">
+          <h2 class="row-title">Séries em Alta</h2>
+        </div>
+        <div class="row-carousel" id="carousel-series"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Search View Overlay -->
+<div id="search-overlay">
+  <div class="search-input-wrap">
+    <span style="font-size: 22px; margin-right: 12px;">🔍</span>
+    <input type="text" id="search-box" class="search-input" placeholder="Títulos, personagens, gêneros..." autofocus>
+    <button onclick="closeSearch()" style="background:none; border:none; color:#AAA; font-size:20px; cursor:pointer;">✕</button>
+  </div>
+  <h2 style="font-size: 20px; margin-bottom: 20px; color:#AAA;" id="search-results-title">Recomendações para você</h2>
+  <div class="search-grid" id="search-grid"></div>
+</div>
+
+<!-- Detail & Seasons Modal -->
+<div id="detail-modal">
+  <div class="modal-box">
+    <button class="modal-close-btn" onclick="closeDetailModal()">✕</button>
+    <div class="modal-hero" id="modal-hero">
+      <div class="modal-hero-gradient"></div>
+      <div class="modal-info-panel">
+        <h2 id="modal-title" style="font-size: 32px; font-weight: 900; margin-bottom: 12px;">Título</h2>
+        <div class="hero-actions">
+          <button class="btn-hero btn-hero-play" id="modal-play-btn" tabindex="0">▶ Assistir</button>
+          <button class="btn-hero btn-hero-info" id="modal-trailer-btn" tabindex="0">🎬 Trailer</button>
+          <button class="btn-hero btn-hero-info" id="modal-list-btn" tabindex="0">➕ Minha Lista</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="meta-tags">
+        <span id="modal-match">98% Relevante</span>
+        <span class="meta-tag-pill" id="modal-year">2024</span>
+        <span class="meta-tag-pill" id="modal-rating">★ 8.5</span>
+        <span class="meta-tag-pill">4K Ultra HD</span>
+      </div>
+      <p class="modal-overview" id="modal-overview">Sinopse do título...</p>
+
+      <!-- Episode selection for TV series -->
+      <div class="episodes-section" id="modal-episodes-section" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="font-size: 18px; margin-bottom: 12px;">Episódios</h3>
+          <select id="season-selector" class="season-select" onchange="onSeasonChange()"></select>
+        </div>
+        <div class="episode-list" id="modal-episodes-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Integrated Fullscreen Video Player -->
+<div id="player-overlay">
+  <video id="main-video" playsinline></video>
+
+  <!-- Skip Intro Floating Button -->
+  <button class="btn-skip-intro" id="btn-skip-intro" onclick="skipIntro()">⏩ Pular Abertura</button>
+
+  <!-- Player Custom TV & PC Controls -->
+  <div class="player-controls" id="player-controls">
+    <div class="player-top-bar">
+      <div>
+        <button class="player-icon-btn" onclick="closePlayer()" title="Voltar (Esc)" style="width: 44px; height: 44px; font-size: 18px; margin-bottom: 8px;">←</button>
+        <div class="player-title" id="player-title">Reproduzindo</div>
+        <div class="player-source-badge" id="player-source">Servidor Oficial 4K</div>
+      </div>
+      <button class="player-icon-btn" onclick="toggleFullscreen()" title="Tela Cheia (F)" style="width: 44px; height: 44px; font-size: 18px;">⛶</button>
+    </div>
+
+    <div class="player-center-controls">
+      <button class="player-icon-btn" onclick="seekBy(-10)" title="Retroceder 10s">⏪</button>
+      <button class="player-icon-btn player-play-btn" id="player-btn-play" onclick="togglePlayPause()" title="Play/Pause (Espaço)">▶</button>
+      <button class="player-icon-btn" onclick="seekBy(10)" title="Avançar 10s">⏩</button>
+    </div>
+
+    <div class="player-bottom-bar">
+      <div class="progress-slider-container" id="timeline-container" onclick="seekTimeline(event)">
+        <div class="progress-slider-fill" id="timeline-fill">
+          <div class="progress-slider-thumb"></div>
+        </div>
+      </div>
+      <div class="player-time-row">
+        <span id="player-current-time">00:00</span>
+        <span id="player-total-time">00:00</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cloud Sync Modal (TV, Celular e Web) -->
+<div id="sync-modal">
+  <div class="sync-box">
+    <button class="modal-close-btn" onclick="closeSyncModal()">✕</button>
+    <h2><span>☁</span> Sincronização Netfilmes</h2>
+    <p class="sync-desc">Sincronize seu histórico, minuto exato onde parou e sua Minha Lista em tempo real entre a sua TV, Celular e este computador.</p>
+
+    <div class="sync-alert" id="sync-alert"></div>
+
+    <!-- State when NOT logged in -->
+    <div id="sync-unauth-section">
+      <input type="email" id="sync-email" class="sync-input" placeholder="Seu e-mail cadastrado no App" autocomplete="email">
+      <input type="password" id="sync-password" class="sync-input" placeholder="Sua senha" autocomplete="current-password">
+      <button class="btn-sync-action" id="btn-sync-login" onclick="handleSyncLogin()">
+        <span>🔐</span> Entrar e Sincronizar
+      </button>
+      <button class="btn-sync-secondary" id="btn-sync-register" onclick="handleSyncRegister()">
+        Criar Nova Conta
+      </button>
+      <div style="font-size: 12px; color: #888; text-align: center; margin-top: 14px; line-height: 1.4;">
+        💡 Use a mesma conta que você usa no aplicativo da TV ou do celular para manter seus filmes e séries sincronizados automaticamente.
+      </div>
+    </div>
+
+    <!-- State when LOGGED IN -->
+    <div id="sync-auth-section" style="display: none;">
+      <div style="background: #242424; border-radius: 8px; padding: 14px; margin-bottom: 16px; border: 1px solid #333;">
+        <div style="font-size: 11px; color: #888; letter-spacing: 1px; margin-bottom: 4px;">CONECTADO COMO</div>
+        <div id="sync-user-email" style="font-size: 15px; font-weight: bold; color: #FFF; word-break: break-all;">user@exemplo.com</div>
+        <div style="font-size: 12px; color: #46D369; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+          <span>●</span> Sincronização em tempo real ativa
+        </div>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="font-size: 12px; color: #AAA; display: block; margin-bottom: 6px;">PERFIL SINCRONIZADO</label>
+        <select id="sync-profile-selector" class="season-select" style="width: 100%;" onchange="onSyncProfileChange()"></select>
+      </div>
+
+      <button class="btn-sync-action" onclick="syncNowFromWeb()">
+        <span>🔄</span> Sincronizar Agora
+      </button>
+      <button class="btn-sync-secondary" onclick="handleSyncLogout()" style="color: #FF7777; margin-top: 4px;">
+        Desconectar Conta
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notice -->
+<div id="toast"></div>
+
+<script>
+  const TMDB_API_KEY = "bbd9576aac007fa885ed185429fb4770";
+  const TMDB_BASE = "https://api.themoviedb.org/3";
+  const PINGUIM_PROXY = "https://netfilmes-proxy.shardweb.app";
+
+  // Firebase Cloud Sync Configuration (same as Android TV / Phone App)
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDtcSTfWJYoiXJjANghnzOFThZl-vauh7o",
+    authDomain: "login-3ebd2.firebaseapp.com",
+    projectId: "login-3ebd2",
+    storageBucket: "login-3ebd2.appspot.com",
+    appId: "1:225339095501:web:345f38dfaad8ef9972ac84"
+  };
+
+  let firebaseApp = null;
+  let firebaseAuth = null;
+  let firestoreDb = null;
+  let firestoreUnsubscribe = null;
+  let currentUser = null;
+
+  // In-memory data store with localStorage fallback & cloud sync
+  let cloudData = {
+    profiles: [{ id: "p1", name: "Principal", avatar: "🍿", color: "#E50914" }],
+    activeProfileId: "p1",
+    progressByProfile: {},
+    playlistByProfile: {}
+  };
+
+  let trendingItems = [];
+  let currentHeroIndex = 0;
+  let heroInterval = null;
+  let currentDetailItem = null;
+  let currentMediaType = 'movie';
+  let currentMediaId = 0;
+  let currentSeason = 1;
+  let currentEpisode = 1;
+  let currentTitlePlaying = "";
+  let hlsInstance = null;
+  let controlsTimeout = null;
+  let lastProgressSaveSec = 0;
+  let pendingResumePosition = 0;
+
+  // Safe Image Helpers for TMDB posters and backdrops
+  function getMediaPoster(item) {
+    if (!item) return 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico';
+    let path = item.poster || item.posterPath || item.poster_path;
+    if (!path) path = item.backdrop || item.backdropPath || item.backdrop_path;
+    if (!path) return 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (path.startsWith('/')) return `https://image.tmdb.org/t/p/w500${path}`;
+    return `https://image.tmdb.org/t/p/w500/${path}`;
+  }
+
+  function getMediaBackdrop(item) {
+    if (!item) return 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico';
+    let path = item.backdrop || item.backdropPath || item.backdrop_path;
+    if (!path) path = item.poster || item.posterPath || item.poster_path;
+    if (!path) return 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    if (path.startsWith('/')) return `https://image.tmdb.org/t/p/w780${path}`;
+    return `https://image.tmdb.org/t/p/w780/${path}`;
+  }
+
+  // Load local cache on boot
+  function loadLocalSyncCache() {
+    try {
+      const cached = localStorage.getItem('netfilmes_cloud_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed) {
+          if (parsed.profiles) cloudData.profiles = parsed.profiles;
+          if (parsed.activeProfileId) cloudData.activeProfileId = parsed.activeProfileId;
+          if (parsed.progressByProfile) cloudData.progressByProfile = parsed.progressByProfile;
+          if (parsed.playlistByProfile) cloudData.playlistByProfile = parsed.playlistByProfile;
+        }
+      }
+    } catch (e) {
+      console.warn("Local cache load error", e);
+    }
+  }
+
+  function saveLocalSyncCache() {
+    try {
+      localStorage.setItem('netfilmes_cloud_cache', JSON.stringify(cloudData));
+    } catch (e) {}
+  }
+
+  function getActiveProfileId() {
+    return cloudData.activeProfileId || (cloudData.profiles && cloudData.profiles[0] ? cloudData.profiles[0].id : "p1");
+  }
+
+  // Initialize Firebase and Authentication
+  function initFirebase() {
+    try {
+      if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+        firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+        firebaseAuth = firebase.auth();
+        firestoreDb = firebase.firestore();
+
+        firebaseAuth.onAuthStateChanged(user => {
+          currentUser = user;
+          updateSyncUI();
+          if (user) {
+            setupFirestoreListener(user);
+          } else {
+            if (firestoreUnsubscribe) {
+              firestoreUnsubscribe();
+              firestoreUnsubscribe = null;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("Firebase init error", e);
+    }
+  }
+
+  function setupFirestoreListener(user) {
+    if (!firestoreDb || !user) return;
+    if (firestoreUnsubscribe) firestoreUnsubscribe();
+
+    firestoreUnsubscribe = firestoreDb.collection("users").document(user.uid).onSnapshot(doc => {
+      if (doc.exists) {
+        const payload = doc.data();
+        if (payload && payload.data) {
+          mergeRemoteData(payload.data);
+          saveLocalSyncCache();
+          renderContinueWatching();
+          updateSyncUI();
+          if (document.querySelector('.rail-item.active[data-view="mylist"]')) {
+            renderMyListView();
+          }
+        }
+      }
+    }, err => {
+      console.warn("Firestore snapshot error", err);
+    });
+  }
+
+  function mergeRemoteData(remote) {
+    if (!remote) return;
+    if (remote.profiles && remote.profiles.length > 0) {
+      cloudData.profiles = remote.profiles;
+    }
+    if (remote.activeProfileId) {
+      cloudData.activeProfileId = remote.activeProfileId;
+    }
+    if (remote.progressByProfile) {
+      const allPids = Object.keys({ ...(cloudData.progressByProfile || {}), ...remote.progressByProfile });
+      if (!cloudData.progressByProfile) cloudData.progressByProfile = {};
+      allPids.forEach(pid => {
+        const localList = cloudData.progressByProfile[pid] || [];
+        const remoteList = remote.progressByProfile[pid] || [];
+        const map = new Map();
+        [...localList, ...remoteList].forEach(item => {
+          if (!item || !item.key) return;
+          const ex = map.get(item.key);
+          if (!ex || (item.updatedAt || 0) >= (ex.updatedAt || 0)) {
+            map.set(item.key, item);
+          }
+        });
+        cloudData.progressByProfile[pid] = Array.from(map.values())
+          .sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+          .slice(0, 40);
+      });
+    }
+    if (remote.playlistByProfile) {
+      const allPids = Object.keys({ ...(cloudData.playlistByProfile || {}), ...remote.playlistByProfile });
+      if (!cloudData.playlistByProfile) cloudData.playlistByProfile = {};
+      allPids.forEach(pid => {
+        const localList = cloudData.playlistByProfile[pid] || [];
+        const remoteList = remote.playlistByProfile[pid] || [];
+        const map = new Map();
+        [...localList, ...remoteList].forEach(item => {
+          if (!item || !item.key) return;
+          const ex = map.get(item.key);
+          if (!ex || (item.addedAt || 0) >= (ex.addedAt || 0)) {
+            map.set(item.key, item);
+          }
+        });
+        cloudData.playlistByProfile[pid] = Array.from(map.values())
+          .sort((a,b) => (b.addedAt || 0) - (a.addedAt || 0));
+      });
+    }
+  }
+
+  async function pushDataToFirestore() {
+    if (!currentUser || !firestoreDb) return;
+    try {
+      await firestoreDb.collection("users").document(currentUser.uid).set({
+        email: currentUser.email || "",
+        data: cloudData,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Firestore save error", e);
+    }
+  }
+
+  // Active Profile Progress
+  function getActiveProfileProgress() {
+    const pid = getActiveProfileId();
+    return (cloudData.progressByProfile && cloudData.progressByProfile[pid]) || [];
+  }
+
+  // Active Profile Playlist
+  function getMyList() {
+    const pid = getActiveProfileId();
+    const cloudList = cloudData.playlistByProfile && cloudData.playlistByProfile[pid];
+    if (cloudList && cloudList.length > 0) {
+      return cloudList.map(item => {
+        const m = item.media || {};
+        return {
+          id: m.id || 0,
+          media_type: m.type || 'movie',
+          title: m.title || '',
+          name: m.title || '',
+          poster_path: m.posterPath || m.poster || '',
+          backdrop_path: m.backdropPath || m.backdrop || '',
+          vote_average: m.rating || 8.0,
+          release_date: m.date || m.year || '',
+          first_air_date: m.date || m.year || '',
+          overview: m.overview || ''
+        };
+      });
+    }
+    try {
+      return JSON.parse(localStorage.getItem('netfilmes_mylist') || '[]');
+    } catch { return []; }
+  }
+
+  async function toggleMyList(item) {
+    const type = item.media_type || (item.title ? 'movie' : 'tv');
+    const id = item.id;
+    const key = `${type}:${id}`;
+    const pid = getActiveProfileId();
+
+    if (!cloudData.playlistByProfile) cloudData.playlistByProfile = {};
+    if (!cloudData.playlistByProfile[pid]) cloudData.playlistByProfile[pid] = [];
+
+    const list = cloudData.playlistByProfile[pid];
+    const exists = list.some(x => x.key === key);
+
+    if (exists) {
+      cloudData.playlistByProfile[pid] = list.filter(x => x.key !== key);
+      showToast("Removido da Minha Lista");
+    } else {
+      const posterUrl = getMediaPoster(item);
+      const backdropUrl = getMediaBackdrop(item);
+      const playlistEntry = {
+        key: key,
+        addedAt: Date.now(),
+        media: {
+          type: type,
+          id: id,
+          title: item.title || item.name || '',
+          overview: item.overview || '',
+          poster: posterUrl,
+          posterPath: posterUrl,
+          backdrop: backdropUrl,
+          backdropPath: backdropUrl,
+          rating: item.vote_average || 8.0,
+          year: (item.release_date || item.first_air_date || '').substring(0, 4),
+          date: item.release_date || item.first_air_date || ''
+        }
+      };
+      cloudData.playlistByProfile[pid].unshift(playlistEntry);
+      showToast("Adicionado à Minha Lista ❤️");
+    }
+
+    saveLocalSyncCache();
+    localStorage.setItem('netfilmes_mylist', JSON.stringify(getMyList()));
+    updateModalListBtn(item);
+
+    if (currentUser) {
+      pushDataToFirestore();
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.innerText = msg;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+  }
+
+  // TMDB API Fetcher
+  async function tmdbFetch(endpoint) {
+    try {
+      const url = `${TMDB_BASE}${endpoint}${endpoint.includes('?') ? '&' : '?'}api_key=${TMDB_API_KEY}&language=pt-BR`;
+      const res = await fetch(url);
+      return await res.json();
+    } catch (e) {
+      console.error("TMDB error", e);
+      return null;
+    }
+  }
+
+  // Initialize App
+  async function init() {
+    loadLocalSyncCache();
+    initFirebase();
+    loadCatalog();
+    renderContinueWatching();
+    setupKeyboardNavigation();
+    setupPlayerEventListeners();
+  }
+
+  async function loadCatalog() {
+    const [trending, popMovies, popSeries, topMovies, topSeries] = await Promise.all([
+      tmdbFetch('/trending/all/day'),
+      tmdbFetch('/movie/popular'),
+      tmdbFetch('/tv/popular'),
+      tmdbFetch('/movie/top_rated'),
+      tmdbFetch('/tv/top_rated')
+    ]);
+
+    if (trending && trending.results) {
+      trendingItems = trending.results.filter(x => (x.backdrop_path || x.poster_path) && (x.title || x.name)).slice(0, 8);
+      renderHero(0);
+      startHeroRotation();
+    }
+
+    renderContinueWatching();
+
+    if (popMovies && popMovies.results) {
+      renderCarousel('carousel-popular', popMovies.results.map(x => ({ ...x, media_type: 'movie' })));
+    }
+    if (topMovies && topMovies.results) {
+      renderTop10('carousel-top10-movies', topMovies.results.slice(0, 10).map(x => ({ ...x, media_type: 'movie' })));
+    }
+    if (topSeries && topSeries.results) {
+      renderTop10('carousel-top10-series', topSeries.results.slice(0, 10).map(x => ({ ...x, media_type: 'tv' })));
+    }
+    if (popSeries && popSeries.results) {
+      renderCarousel('carousel-series', popSeries.results.map(x => ({ ...x, media_type: 'tv' })));
+    }
+  }
+
+  // Render "Continuar Assistindo" synchronized row
+  function renderContinueWatching() {
+    const container = document.getElementById('carousel-continue-watching');
+    const row = document.getElementById('row-continue-watching');
+    if (!container || !row) return;
+
+    const list = getActiveProfileProgress();
+    if (!list || list.length === 0) {
+      row.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    row.style.display = 'block';
+    container.innerHTML = '';
+
+    list.forEach(prog => {
+      const m = prog.media;
+      if (!m) return;
+      const img = getMediaBackdrop(m);
+      const title = m.title || "Sem título";
+      const pos = prog.position || 0;
+      const dur = prog.duration || 1;
+      const pct = Math.min(100, Math.max(4, Math.round((pos / dur) * 100)));
+      const minsLeft = Math.max(1, Math.round((dur - pos) / 60));
+
+      const epLabel = (m.season && m.episode) ? `T${m.season}:E${m.episode} • ` : '';
+      const statusLabel = `${epLabel}${minsLeft}m restantes`;
+
+      const card = document.createElement('div');
+      card.className = 'media-card';
+      card.tabIndex = 0;
+      card.style.position = 'relative';
+      card.innerHTML = `
+        <span class="media-card-badge">N</span>
+        <img src="${img}" alt="${title}" loading="lazy">
+        <div class="continue-card-progress">
+          <div class="continue-card-bar" style="width: ${pct}%"></div>
+        </div>
+        <div class="media-card-info">
+          <div class="media-card-title">${title}</div>
+          <div class="media-card-sub" style="color: #46D369; font-weight: bold;">▶ ${statusLabel}</div>
+        </div>
+      `;
+      card.onclick = () => {
+        playMedia(m.type || 'movie', m.id, title, m.season || 1, m.episode || 1, pos);
+      };
+      card.onkeydown = (e) => { if (e.key === 'Enter') card.click(); };
+      container.appendChild(card);
+    });
+  }
+
+  // Hero Banner Renderer
+  function renderHero(index) {
+    if (!trendingItems.length) return;
+    const item = trendingItems[index];
+    currentHeroIndex = index;
+
+    const banner = document.getElementById('hero-banner');
+    const title = item.title || item.name;
+    const typeLabel = item.media_type === 'movie' ? 'F I L M E' : 'S É R I E';
+    const bgUrl = getMediaBackdrop(item);
+
+    banner.style.backgroundImage = `url('${bgUrl}')`;
+    document.getElementById('hero-title').innerText = title;
+    document.getElementById('hero-type').innerText = typeLabel;
+    document.getElementById('hero-overview').innerText = item.overview || "Assista agora em alta definição 4K Ultra HD na Netfilmes PC & TV.";
+
+    document.getElementById('hero-btn-play').onclick = () => playMedia(item.media_type, item.id, title);
+    document.getElementById('hero-btn-info').onclick = () => openDetailModal(item.media_type, item.id);
+  }
+
+  function startHeroRotation() {
+    if (heroInterval) clearInterval(heroInterval);
+    heroInterval = setInterval(() => {
+      currentHeroIndex = (currentHeroIndex + 1) % trendingItems.length;
+      renderHero(currentHeroIndex);
+    }, 10000);
+  }
+
+  // Render Horizontal Cards
+  function renderCarousel(containerId, items) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    items.forEach(item => {
+      const img = getMediaBackdrop(item);
+      const title = item.title || item.name || "Sem título";
+
+      const card = document.createElement('div');
+      card.className = 'media-card';
+      card.tabIndex = 0;
+      card.innerHTML = `
+        <span class="media-card-badge">N</span>
+        <img src="${img}" alt="${title}" loading="lazy">
+        <div class="media-card-info">
+          <div class="media-card-title">${title}</div>
+          <div class="media-card-sub">★ ${(item.vote_average || 7.5).toFixed(1)} • ${(item.release_date || item.first_air_date || '').substring(0,4)}</div>
+        </div>
+      `;
+      card.onclick = () => openDetailModal(item.media_type || 'movie', item.id);
+      card.onkeydown = (e) => { if (e.key === 'Enter') card.click(); };
+      container.appendChild(card);
+    });
+  }
+
+  // Render Top 10 Giant Numbers
+  function renderTop10(containerId, items) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    items.forEach((item, idx) => {
+      const img = getMediaBackdrop(item);
+      const title = item.title || item.name || "Sem título";
+
+      const wrap = document.createElement('div');
+      wrap.className = 'top10-card-wrap';
+      wrap.tabIndex = 0;
+      wrap.innerHTML = `
+        <div class="top10-rank">${idx + 1}</div>
+        <div class="top10-card">
+          <span class="media-card-badge">N</span>
+          <img src="${img}" alt="${title}" loading="lazy">
+        </div>
+      `;
+      wrap.onclick = () => openDetailModal(item.media_type || 'movie', item.id);
+      wrap.onkeydown = (e) => { if (e.key === 'Enter') wrap.click(); };
+      container.appendChild(wrap);
+    });
+  }
+
+  // Detail Modal Logic
+  async function openDetailModal(type, id) {
+    currentMediaType = type;
+    currentMediaId = id;
+    const modal = document.getElementById('detail-modal');
+    modal.style.display = 'flex';
+
+    const details = await tmdbFetch(`/${type}/${id}`);
+    if (!details) return;
+    currentDetailItem = { ...details, media_type: type };
+
+    const heroImg = getMediaBackdrop(details);
+    document.getElementById('modal-hero').style.backgroundImage = `url('${heroImg}')`;
+    document.getElementById('modal-title').innerText = details.title || details.name;
+    document.getElementById('modal-overview').innerText = details.overview || "Sem sinopse disponível.";
+    document.getElementById('modal-year').innerText = (details.release_date || details.first_air_date || '').substring(0,4);
+    document.getElementById('modal-rating').innerText = `★ ${(details.vote_average || 8).toFixed(1)}`;
+    document.getElementById('modal-match').innerText = `${Math.floor(88 + (details.vote_average || 8))} % Relevante`;
+
+    document.getElementById('modal-play-btn').onclick = () => {
+      closeDetailModal();
+      playMedia(type, id, details.title || details.name);
+    };
+
+    // Trailer
+    document.getElementById('modal-trailer-btn').onclick = async () => {
+      const vids = await tmdbFetch(`/${type}/${id}/videos`);
+      const yt = vids?.results?.find(x => x.site === 'YouTube' && x.type === 'Trailer');
+      if (yt) window.open(`https://www.youtube.com/watch?v=${yt.key}`, '_blank');
+      else showToast("Nenhum trailer encontrado.");
+    };
+
+    updateModalListBtn(currentDetailItem);
+    document.getElementById('modal-list-btn').onclick = () => toggleMyList(currentDetailItem);
+
+    // Episodes if TV Show
+    const epSection = document.getElementById('modal-episodes-section');
+    if (type === 'tv' && details.seasons) {
+      epSection.style.display = 'block';
+      const sel = document.getElementById('season-selector');
+      sel.innerHTML = '';
+      details.seasons.filter(s => s.season_number > 0).forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.season_number;
+        opt.innerText = `Temporada ${s.season_number}`;
+        sel.appendChild(opt);
+      });
+      loadSeasonEpisodes(id, 1);
+    } else {
+      epSection.style.display = 'none';
+    }
+  }
+
+  function updateModalListBtn(item) {
+    const inList = getMyList().some(x => x.id === item.id);
+    document.getElementById('modal-list-btn').innerText = inList ? '✔ Na Lista' : '➕ Minha Lista';
+  }
+
+  async function onSeasonChange() {
+    const s = document.getElementById('season-selector').value;
+    loadSeasonEpisodes(currentMediaId, s);
+  }
+
+  async function loadSeasonEpisodes(tvId, seasonNum) {
+    const list = document.getElementById('modal-episodes-list');
+    list.innerHTML = '<div style="padding:16px; color:#888;">Carregando episódios...</div>';
+    const data = await tmdbFetch(`/tv/${tvId}/season/${seasonNum}`);
+    if (!data || !data.episodes) return;
+
+    list.innerHTML = '';
+    data.episodes.forEach(ep => {
+      const row = document.createElement('div');
+      row.className = 'episode-row';
+      row.tabIndex = 0;
+      const thumb = ep.still_path ? `https://image.tmdb.org/t/p/w300${ep.still_path}` : 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.ico';
+      row.innerHTML = `
+        <div class="ep-num">${ep.episode_number}</div>
+        <img src="${thumb}" class="ep-thumb" alt="EP ${ep.episode_number}">
+        <div class="ep-details">
+          <div class="ep-title">${ep.name || `Episódio ${ep.episode_number}`}</div>
+          <div class="ep-desc">${ep.overview || "Sem descrição disponível."}</div>
+        </div>
+      `;
+      row.onclick = () => {
+        closeDetailModal();
+        playMedia('tv', tvId, `${currentDetailItem.name} - T${seasonNum}:E${ep.episode_number}`, seasonNum, ep.episode_number);
+      };
+      row.onkeydown = (e) => { if (e.key === 'Enter') row.click(); };
+      list.appendChild(row);
+    });
+  }
+
+  function closeDetailModal() {
+    document.getElementById('detail-modal').style.display = 'none';
+  }
+
+  // Integrated Fullscreen Video Player with exact resume position
+  async function playMedia(type, id, title, season = 1, episode = 1, resumePosition = 0) {
+    currentMediaType = type;
+    currentMediaId = id;
+    currentSeason = season;
+    currentEpisode = episode;
+    currentTitlePlaying = title;
+    lastProgressSaveSec = 0;
+
+    // Check saved progress if not provided
+    if (!resumePosition || resumePosition <= 0) {
+      const progList = getActiveProfileProgress();
+      const saved = progList.find(p => 
+        p.key === `${type}:${id}` || 
+        p.key === `tv:${id}:${season}:${episode}` || 
+        (p.media && p.media.id === id && (type === 'movie' || (p.media.season === season && p.media.episode === episode)))
+      );
+      if (saved && saved.position > 5) {
+        resumePosition = saved.position;
+      }
+    }
+
+    pendingResumePosition = resumePosition;
+
+    const overlay = document.getElementById('player-overlay');
+    const video = document.getElementById('main-video');
+    document.getElementById('player-title').innerText = title;
+    overlay.style.display = 'block';
+
+    let streamUrl = "";
+    try {
+      const proxyEndpoint = type === 'movie'
+        ? `${PINGUIM_PROXY}/pinguim/stream/movie/${id}.json`
+        : `${PINGUIM_PROXY}/pinguim/stream/tv/${id}/${season}/${episode}.json`;
+      
+      const res = await fetch(proxyEndpoint);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.streams && json.streams.length > 0) {
+          streamUrl = json.streams[0].url;
+          document.getElementById('player-source').innerText = `${json.streams[0].provider || 'PinguimCinema'} • ${json.streams[0].label || 'Oficial'}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Proxy stream resolution error", e);
+    }
+
+    if (!streamUrl) {
+      streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+      document.getElementById('player-source').innerText = "Servidor Netfilmes Demo HD";
+    }
+
+    let hasRestoredPosition = false;
+    const restoreSavedTime = () => {
+      if (!hasRestoredPosition && pendingResumePosition > 5 && video.duration > 10) {
+        video.currentTime = Math.min(pendingResumePosition, video.duration - 5);
+        hasRestoredPosition = true;
+        showToast(`Continuando em ${formatTime(pendingResumePosition)} ⏩`);
+      }
+    };
+
+    video.onloadedmetadata = restoreSavedTime;
+    video.oncanplay = restoreSavedTime;
+
+    if (Hls.isSupported() && streamUrl.includes('.m3u8')) {
+      if (hlsInstance) hlsInstance.destroy();
+      hlsInstance = new Hls();
+      hlsInstance.loadSource(streamUrl);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play();
+        restoreSavedTime();
+      });
+    } else {
+      video.src = streamUrl;
+      video.play();
+    }
+
+    resetControlsTimer();
+  }
+
+  // Save Progress Record to in-memory, localStorage and Firestore
+  async function saveProgressRecord(type, id, title, season, episode, position, duration) {
+    if (!duration || duration <= 0) return;
+    const fraction = position / duration;
+    const pid = getActiveProfileId();
+    const key = (type === 'tv' && season && episode) ? `tv:${id}:${season}:${episode}` : `${type}:${id}`;
+
+    if (!cloudData.progressByProfile) cloudData.progressByProfile = {};
+    let list = (cloudData.progressByProfile[pid] || []).filter(x => x.key !== key);
+
+    if (position >= 5 && fraction < 0.95) {
+      const bestPoster = currentDetailItem ? getMediaPoster(currentDetailItem) : null;
+      const bestBackdrop = currentDetailItem ? getMediaBackdrop(currentDetailItem) : null;
+      const bestYear = currentDetailItem ? (currentDetailItem.release_date || currentDetailItem.first_air_date || '').substring(0,4) : '';
+
+      const entry = {
+        key: key,
+        position: position,
+        duration: duration,
+        updatedAt: Date.now(),
+        media: {
+          type: type,
+          id: id,
+          title: title,
+          poster: bestPoster,
+          posterPath: bestPoster,
+          backdrop: bestBackdrop,
+          backdropPath: bestBackdrop,
+          year: bestYear,
+          season: season,
+          episode: episode
+        }
+      };
+      list.unshift(entry);
+    }
+
+    cloudData.progressByProfile[pid] = list.slice(0, 40);
+    saveLocalSyncCache();
+    renderContinueWatching();
+
+    if (currentUser) {
+      pushDataToFirestore();
+    }
+  }
+
+  function closePlayer() {
+    const video = document.getElementById('main-video');
+    const cur = video.currentTime;
+    const dur = video.duration || 0;
+
+    if (cur > 5 && dur > 15) {
+      saveProgressRecord(currentMediaType, currentMediaId, currentTitlePlaying, currentSeason, currentEpisode, cur, dur);
+    }
+
+    video.pause();
+    video.src = "";
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+    document.getElementById('player-overlay').style.display = 'none';
+    if (document.fullscreenElement) document.exitFullscreen();
+  }
+
+  function togglePlayPause() {
+    const video = document.getElementById('main-video');
+    const btn = document.getElementById('player-btn-play');
+    if (video.paused) {
+      video.play();
+      btn.innerText = '⏸';
+    } else {
+      video.pause();
+      btn.innerText = '▶';
+    }
+    resetControlsTimer();
+  }
+
+  function seekBy(seconds) {
+    const video = document.getElementById('main-video');
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    resetControlsTimer();
+  }
+
+  function skipIntro() {
+    const video = document.getElementById('main-video');
+    video.currentTime = Math.min(video.duration, video.currentTime + 85);
+    document.getElementById('btn-skip-intro').style.display = 'none';
+    showToast("Abertura Pulada ⏩");
+  }
+
+  function seekTimeline(e) {
+    const video = document.getElementById('main-video');
+    const rect = document.getElementById('timeline-container').getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    video.currentTime = pos * video.duration;
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.getElementById('player-overlay').requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  }
+
+  function formatTime(s) {
+    if (isNaN(s)) return "00:00";
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+
+  function setupPlayerEventListeners() {
+    const video = document.getElementById('main-video');
+    const skipBtn = document.getElementById('btn-skip-intro');
+
+    video.addEventListener('timeupdate', () => {
+      const cur = video.currentTime;
+      const dur = video.duration || 0;
+      document.getElementById('player-current-time').innerText = formatTime(cur);
+      document.getElementById('player-total-time').innerText = formatTime(dur);
+      if (dur > 0) {
+        document.getElementById('timeline-fill').style.width = `${(cur / dur) * 100}%`;
+      }
+
+      // Periodically save progress to sync with Android App
+      if (dur > 15 && cur > 5 && Math.abs(cur - lastProgressSaveSec) >= 5) {
+        lastProgressSaveSec = cur;
+        saveProgressRecord(currentMediaType, currentMediaId, currentTitlePlaying, currentSeason, currentEpisode, cur, dur);
+      }
+
+      // Show Skip Intro between 10s and 85s
+      if (cur >= 10 && cur <= 85) {
+        skipBtn.style.display = 'block';
+      } else {
+        skipBtn.style.display = 'none';
+      }
+    });
+
+    video.addEventListener('play', () => document.getElementById('player-btn-play').innerText = '⏸');
+    video.addEventListener('pause', () => {
+      document.getElementById('player-btn-play').innerText = '▶';
+      const cur = video.currentTime;
+      const dur = video.duration || 0;
+      if (cur > 5 && dur > 15) {
+        saveProgressRecord(currentMediaType, currentMediaId, currentTitlePlaying, currentSeason, currentEpisode, cur, dur);
+      }
+    });
+
+    const overlay = document.getElementById('player-overlay');
+    overlay.addEventListener('mousemove', resetControlsTimer);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === video) togglePlayPause();
+    });
+  }
+
+  function resetControlsTimer() {
+    const controls = document.getElementById('player-controls');
+    controls.classList.remove('hidden');
+    if (controlsTimeout) clearTimeout(controlsTimeout);
+    controlsTimeout = setTimeout(() => {
+      const video = document.getElementById('main-video');
+      if (!video.paused) controls.classList.add('hidden');
+    }, 4000);
+  }
+
+  // Keyboard navigation for PC & TV remotes
+  function setupKeyboardNavigation() {
+    document.addEventListener('keydown', (e) => {
+      const playerOpen = document.getElementById('player-overlay').style.display === 'block';
+      const detailOpen = document.getElementById('detail-modal').style.display === 'flex';
+      const searchOpen = document.getElementById('search-overlay').style.display === 'block';
+      const syncOpen = document.getElementById('sync-modal').style.display === 'flex';
+
+      if (playerOpen) {
+        if (e.key === 'Escape' || e.key === 'Backspace') {
+          closePlayer();
+          e.preventDefault();
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          togglePlayPause();
+          e.preventDefault();
+        } else if (e.key === 'ArrowLeft') {
+          seekBy(-10);
+          e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+          seekBy(10);
+          e.preventDefault();
+        } else if (e.key === 'f' || e.key === 'F') {
+          toggleFullscreen();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (syncOpen) {
+        if (e.key === 'Escape' || e.key === 'Backspace') {
+          closeSyncModal();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (detailOpen) {
+        if (e.key === 'Escape' || e.key === 'Backspace') {
+          closeDetailModal();
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (searchOpen) {
+        if (e.key === 'Escape') {
+          closeSearch();
+          e.preventDefault();
+        }
+        return;
+      }
+    });
+  }
+
+  // View Switcher (Início, Filmes, Séries, Minha Lista)
+  async function switchView(view) {
+    document.querySelectorAll('.rail-item').forEach(el => el.classList.remove('active'));
+    const target = document.querySelector(`.rail-item[data-view="${view}"]`);
+    if (target) target.classList.add('active');
+
+    closeSearch();
+    closeDetailModal();
+    closeSyncModal();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (view === 'home') {
+      loadCatalog();
+    } else if (view === 'movies') {
+      const movies = await tmdbFetch('/discover/movie?sort_by=popularity.desc');
+      if (movies && movies.results) renderCarousel('carousel-popular', movies.results.map(x => ({ ...x, media_type: 'movie' })));
+    } else if (view === 'series') {
+      const series = await tmdbFetch('/discover/tv?sort_by=popularity.desc');
+      if (series && series.results) renderCarousel('carousel-popular', series.results.map(x => ({ ...x, media_type: 'tv' })));
+    } else if (view === 'mylist') {
+      renderMyListView();
+    }
+  }
+
+  function renderMyListView() {
+    const list = getMyList();
+    renderCarousel('carousel-popular', list);
+    const heroTitle = document.getElementById('hero-title');
+    const heroOverview = document.getElementById('hero-overview');
+    if (list.length > 0) {
+      heroTitle.innerText = "Minha Lista";
+      heroOverview.innerText = `Você tem ${list.length} títulos salvos e sincronizados com seus dispositivos.`;
+    } else {
+      heroTitle.innerText = "Sua Lista está Vazia";
+      heroOverview.innerText = "Adicione filmes e séries clicando no botão + Minha Lista nos detalhes de qualquer título.";
+    }
+  }
+
+  // Search Screen
+  function openSearch() {
+    document.getElementById('search-overlay').style.display = 'block';
+    const box = document.getElementById('search-box');
+    box.focus();
+
+    box.oninput = async (e) => {
+      const q = e.target.value.trim();
+      const grid = document.getElementById('search-grid');
+      const title = document.getElementById('search-results-title');
+
+      if (!q) {
+        title.innerText = "Recomendações para você";
+        grid.innerHTML = "";
+        return;
+      }
+
+      title.innerText = `Resultados para "${q}"`;
+      const res = await tmdbFetch(`/search/multi?query=${encodeURIComponent(q)}`);
+      grid.innerHTML = "";
+      if (res && res.results) {
+        res.results.filter(x => x.backdrop_path || x.poster_path).forEach(item => {
+          const img = getMediaBackdrop(item);
+          const itemTitle = item.title || item.name || "Sem título";
+
+          const card = document.createElement('div');
+          card.className = 'media-card';
+          card.style.flex = 'none';
+          card.tabIndex = 0;
+          card.innerHTML = `
+            <span class="media-card-badge">N</span>
+            <img src="${img}" alt="${itemTitle}" loading="lazy">
+            <div class="media-card-info">
+              <div class="media-card-title">${itemTitle}</div>
+              <div class="media-card-sub">★ ${(item.vote_average || 7.5).toFixed(1)}</div>
+            </div>
+          `;
+          card.onclick = () => openDetailModal(item.media_type || (item.title ? 'movie' : 'tv'), item.id);
+          grid.appendChild(card);
+        });
+      }
+    };
+  }
+
+  function closeSearch() {
+    document.getElementById('search-overlay').style.display = 'none';
+  }
+
+  // Cloud Sync Modal UI Handlers
+  function openSyncModal() {
+    const modal = document.getElementById('sync-modal');
+    modal.style.display = 'flex';
+    updateSyncUI();
+  }
+
+  function closeSyncModal() {
+    document.getElementById('sync-modal').style.display = 'none';
+  }
+
+  function updateSyncUI() {
+    const unauth = document.getElementById('sync-unauth-section');
+    const authSec = document.getElementById('sync-auth-section');
+    const badge = document.getElementById('sync-live-badge');
+    const railIcon = document.getElementById('rail-sync-icon');
+    const railLabel = document.getElementById('rail-sync-label');
+
+    if (currentUser) {
+      if (unauth) unauth.style.display = 'none';
+      if (authSec) authSec.style.display = 'block';
+      if (badge) badge.style.display = 'inline-flex';
+      const emailEl = document.getElementById('sync-user-email');
+      if (emailEl) emailEl.innerText = currentUser.email || "Conectado";
+      if (railIcon) railIcon.innerText = "☁";
+      if (railLabel) railLabel.innerText = "Sincronizado";
+
+      // Populate profiles selector
+      const sel = document.getElementById('sync-profile-selector');
+      if (sel) {
+        sel.innerHTML = '';
+        (cloudData.profiles || [{ id: "p1", name: "Principal" }]).forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.innerText = `${p.avatar || '👤'} ${p.name || 'Perfil'}`;
+          if (p.id === getActiveProfileId()) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      }
+    } else {
+      if (unauth) unauth.style.display = 'block';
+      if (authSec) authSec.style.display = 'none';
+      if (badge) badge.style.display = 'none';
+      if (railIcon) railIcon.innerText = "🔄";
+      if (railLabel) railLabel.innerText = "Sincronização";
+    }
+  }
+
+  function showSyncAlert(msg, isSuccess = false) {
+    const el = document.getElementById('sync-alert');
+    if (!el) return;
+    el.className = `sync-alert ${isSuccess ? 'success' : 'error'}`;
+    el.innerText = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  async function handleSyncLogin() {
+    const email = document.getElementById('sync-email').value.trim();
+    const pass = document.getElementById('sync-password').value;
+    if (!email || !pass) {
+      showSyncAlert("Preencha o e-mail e a senha cadastrados.");
+      return;
+    }
+    const btn = document.getElementById('btn-sync-login');
+    btn.disabled = true;
+    btn.innerText = "Conectando...";
+    try {
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+      showSyncAlert("Conta conectada com sucesso! Sincronizando...", true);
+      setTimeout(closeSyncModal, 1500);
+    } catch (e) {
+      showSyncAlert(translateFirebaseError(e));
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<span>🔐</span> Entrar e Sincronizar`;
+    }
+  }
+
+  async function handleSyncRegister() {
+    const email = document.getElementById('sync-email').value.trim();
+    const pass = document.getElementById('sync-password').value;
+    if (!email || !pass) {
+      showSyncAlert("Informe e-mail e senha para criar sua conta.");
+      return;
+    }
+    const btn = document.getElementById('btn-sync-register');
+    btn.disabled = true;
+    btn.innerText = "Criando...";
+    try {
+      await firebase.auth().createUserWithEmailAndPassword(email, pass);
+      showSyncAlert("Conta criada com sucesso! Sincronização ativada.", true);
+      setTimeout(closeSyncModal, 1500);
+    } catch (e) {
+      showSyncAlert(translateFirebaseError(e));
+    } finally {
+      btn.disabled = false;
+      btn.innerText = "Criar Nova Conta";
+    }
+  }
+
+  async function handleSyncLogout() {
+    try {
+      await firebase.auth().signOut();
+      showToast("Conta desconectada.");
+      updateSyncUI();
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  async function syncNowFromWeb() {
+    if (!currentUser || !firestoreDb) {
+      openSyncModal();
+      return;
+    }
+    showToast("Sincronizando com a nuvem...");
+    try {
+      const doc = await firestoreDb.collection("users").document(currentUser.uid).get();
+      if (doc.exists) {
+        mergeRemoteData(doc.data()?.data);
+      }
+      await pushDataToFirestore();
+      saveLocalSyncCache();
+      renderContinueWatching();
+      showToast("Tudo sincronizado perfeitamente! ✔");
+    } catch (e) {
+      showToast("Erro ao sincronizar com a nuvem.");
+    }
+  }
+
+  function onSyncProfileChange() {
+    const sel = document.getElementById('sync-profile-selector');
+    if (!sel) return;
+    cloudData.activeProfileId = sel.value;
+    saveLocalSyncCache();
+    renderContinueWatching();
+    if (document.querySelector('.rail-item.active[data-view="mylist"]')) {
+      renderMyListView();
+    }
+    if (currentUser) {
+      pushDataToFirestore();
+    }
+    showToast("Perfil ativo alterado!");
+  }
+
+  function translateFirebaseError(e) {
+    const code = e.code || e.message || "";
+    if (code.includes("user-not-found")) return "Usuário não encontrado. Crie uma nova conta ou confira o e-mail.";
+    if (code.includes("wrong-password") || code.includes("invalid-credential")) return "Senha incorreta ou e-mail inválido.";
+    if (code.includes("email-already-in-use")) return "Este e-mail já está em uso. Clique em 'Entrar'.";
+    if (code.includes("weak-password")) return "A senha deve conter no mínimo 6 caracteres.";
+    if (code.includes("invalid-email")) return "Formato de e-mail inválido.";
+    return `Falha: ${e.message}`;
+  }
+
+  // Start app
+  window.onload = init;
+</script>
+</body>
+</html>

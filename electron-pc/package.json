@@ -1,0 +1,32 @@
+{
+  "name": "netfilmes-pc",
+  "version": "1.4.0",
+  "description": "Netfilmes para PC e Smart TV",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "make": "electron-packager . Netfilmes --platform=win32 --arch=x64 --out=dist --overwrite"
+  },
+  "keywords": ["netfilmes", "streaming", "pc", "windows"],
+  "author": "Netfilmes",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.netfilmes.pc",
+    "productName": "Netfilmes",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
